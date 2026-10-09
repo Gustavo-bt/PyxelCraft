@@ -49,6 +49,7 @@ mod pardon;
 mod pardonip;
 pub mod perfbar;
 pub mod ping;
+pub mod essentials;
 mod particle;
 mod place;
 mod playsound;
@@ -200,6 +201,7 @@ pub fn default_dispatcher(
     pardonip::register(&mut dispatcher, registry);
     perfbar::register(&mut dispatcher, registry);
     ping::register(&mut dispatcher, registry);
+    essentials::register(&mut dispatcher, registry);
     whitelist::register(&mut dispatcher, registry);
 
     apply_command_overrides(&mut dispatcher, registry, commands_config);
