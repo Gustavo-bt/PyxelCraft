@@ -2,6 +2,8 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::NamedColor;
+use pumpkin_data::attributes::Attributes;
+use crate::entity::attributes::{Modifier, ModifierOperation};
 use crate::command::argument_builder::{ArgumentBuilder, argument, command};
 use crate::command::argument_types::core::float::FloatArgumentType;
 use crate::command::context::command_context::CommandContext;
@@ -9,6 +11,7 @@ use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 
 const PERM: &str = "pumpkin:command.essentials";
+const WALKSPEED_MOD_ID: &str = "pumpkin:walkspeed";
 
 fn feedback(ctx: &CommandContext, label: &str, value: &str, good: bool) {
     let color = if good { NamedColor::Green } else { NamedColor::Red };
@@ -79,13 +82,14 @@ struct FlySpeedExecutor;
 impl CommandExecutor for FlySpeedExecutor {
     fn execute(&self, ctx: &CommandContext) -> CommandExecutorResult {
         let Some(player) = ctx.source.as_player() else { return Ok(0); };
-        let speed = FloatArgumentType::get(ctx, "speed")?;
+        let mult = FloatArgumentType::get(ctx, "speed")?;
+        let internal = (mult as f64 * 0.05).clamp(0.0, 0.25);
         {
             let mut a = player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            a.fly_speed = speed;
+            a.fly_speed = internal as f32;
         }
         player.send_abilities_update();
-        feedback(ctx, "FlySpeed", &format!("{speed:.2}"), true);
+        feedback(ctx, "FlySpeed", &format!("{mult:.2}x"), true);
         Ok(1)
     }
 }
@@ -94,13 +98,22 @@ struct WalkSpeedExecutor;
 impl CommandExecutor for WalkSpeedExecutor {
     fn execute(&self, ctx: &CommandContext) -> CommandExecutorResult {
         let Some(player) = ctx.source.as_player() else { return Ok(0); };
-        let speed = FloatArgumentType::get(ctx, "speed")?;
-        {
-            let mut a = player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            a.walk_speed = speed;
-        }
-        player.send_abilities_update();
-        feedback(ctx, "WalkSpeed", &format!("{speed:.2}"), true);
+        let mult = FloatArgumentType::get(ctx, "speed")?;
+        player.living_entity.update_attribute(&Attributes::MOVEMENT_SPEED, |speed| {
+            speed.remove_modifier(WALKSPEED_MOD_ID);
+            if (mult - 1.0).abs() > 0.01 {
+                speed.add_or_replace_modifier(Modifier {
+                    id: WALKSPEED_MOD_ID.to_string(),
+                    amount: mult as f64,
+                    operation: ModifierOperation::MultiplyTotal,
+                });
+            }
+        });
+        crate::entity::attributes::send_attribute_updates_for_living(
+            &player.living_entity,
+            vec![Attributes::MOVEMENT_SPEED],
+        );
+        feedback(ctx, "WalkSpeed", &format!("{mult:.2}x"), true);
         Ok(1)
     }
 }
@@ -111,6 +124,6 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     dispatcher.register(command("heal", "Restore health").requires(PERM).executes(HealExecutor));
     dispatcher.register(command("feed", "Restore hunger").requires(PERM).executes(FeedExecutor));
     dispatcher.register(command("god", "Toggle invulnerability").requires(PERM).executes(GodExecutor));
-    dispatcher.register(command("flyspeed", "Set fly speed").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 10.0)).executes(FlySpeedExecutor)));
-    dispatcher.register(command("walkspeed", "Set walk speed").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 10.0)).executes(WalkSpeedExecutor)));
+    dispatcher.register(command("flyspeed", "Set fly speed (0-5, 1=normal)").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 5.0)).executes(FlySpeedExecutor)));
+    dispatcher.register(command("walkspeed", "Set walk speed (0-5, 1=normal)").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 5.0)).executes(WalkSpeedExecutor)));
 }
