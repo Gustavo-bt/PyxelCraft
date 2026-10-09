@@ -2,7 +2,8 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::text::color::NamedColor;
-use crate::command::argument_builder::{ArgumentBuilder, command};
+use crate::command::argument_builder::{ArgumentBuilder, argument, command};
+use crate::command::argument_types::core::float::FloatArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
@@ -74,10 +75,42 @@ impl CommandExecutor for GodExecutor {
     }
 }
 
+struct FlySpeedExecutor;
+impl CommandExecutor for FlySpeedExecutor {
+    fn execute(&self, ctx: &CommandContext) -> CommandExecutorResult {
+        let Some(player) = ctx.source.as_player() else { return Ok(0); };
+        let speed = FloatArgumentType::get(ctx, "speed")?;
+        {
+            let mut a = player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            a.fly_speed = speed;
+        }
+        player.send_abilities_update();
+        feedback(ctx, "FlySpeed", &format!("{speed:.2}"), true);
+        Ok(1)
+    }
+}
+
+struct WalkSpeedExecutor;
+impl CommandExecutor for WalkSpeedExecutor {
+    fn execute(&self, ctx: &CommandContext) -> CommandExecutorResult {
+        let Some(player) = ctx.source.as_player() else { return Ok(0); };
+        let speed = FloatArgumentType::get(ctx, "speed")?;
+        {
+            let mut a = player.abilities.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            a.walk_speed = speed;
+        }
+        player.send_abilities_update();
+        feedback(ctx, "WalkSpeed", &format!("{speed:.2}"), true);
+        Ok(1)
+    }
+}
+
 pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistry) {
     registry.register_permission_or_panic(Permission::new(PERM, "Essentials commands", PermissionDefault::Op(PermissionLvl::Two)));
     dispatcher.register(command("fly", "Toggle flight").requires(PERM).executes(FlyExecutor));
     dispatcher.register(command("heal", "Restore health").requires(PERM).executes(HealExecutor));
     dispatcher.register(command("feed", "Restore hunger").requires(PERM).executes(FeedExecutor));
     dispatcher.register(command("god", "Toggle invulnerability").requires(PERM).executes(GodExecutor));
+    dispatcher.register(command("flyspeed", "Set fly speed").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 10.0)).executes(FlySpeedExecutor)));
+    dispatcher.register(command("walkspeed", "Set walk speed").requires(PERM).then(argument("speed", FloatArgumentType::new(0.0, 10.0)).executes(WalkSpeedExecutor)));
 }
